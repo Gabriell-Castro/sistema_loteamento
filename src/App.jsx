@@ -1,23 +1,5 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import "./App.css";
-
-const initialQuadras = [
-  {
-    id: "Q1",
-    lotes: [
-      { numero: 1, status: "vendido" },
-      { numero: 2, status: "vazio" },
-      { numero: 3, status: "pendente" },
-    ],
-  },
-  {
-    id: "Q2",
-    lotes: [
-      { numero: 1, status: "vazio" },
-      { numero: 2, status: "vendido" },
-    ],
-  },
-];
 
 const statusColor = {
   vendido: "status-vendido",
@@ -26,10 +8,29 @@ const statusColor = {
 };
 
 export default function App() {
-  const [quadras, setQuadras] = useState(initialQuadras);
+  const [quadras, setQuadras] = useState([]);
   const [quadraSelecionada, setQuadraSelecionada] = useState(null);
   const [lotesInterligados, setLotesInterligados] = useState([]);
   const detalhesRef = useRef(null);
+
+  const API_BASE_URL = "https://api-loteamento.vercel.app/loteamentos";
+
+  const carregarQuadras = useCallback(async () => {
+    try {
+      const res = await fetch(API_BASE_URL);
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      const data = await res.json();
+      setQuadras(data.map((q) => ({ ...q, id: q._id })));
+    } catch (err) {
+      console.error("Erro ao carregar quadras:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    carregarQuadras();
+  }, [carregarQuadras]);
 
   useEffect(() => {
     if (quadraSelecionada && detalhesRef.current) {
@@ -43,62 +44,149 @@ export default function App() {
   const vazios = todosLotes.filter((l) => l.status === "vazio").length;
   const pendentes = todosLotes.filter((l) => l.status === "pendente").length;
 
-  const atualizarStatus = (quadraId, loteNumero, novoStatus) => {
-    setQuadras((prev) =>
-      prev.map((q) =>
-        q.id === quadraId
-          ? {
-              ...q,
-              lotes: q.lotes.map((l) =>
-                l.numero === loteNumero ? { ...l, status: novoStatus } : l
-              ),
-            }
-          : q
-      )
-    );
-  };
+  const atualizarStatus = async (quadraId, loteNumero, novoStatus) => {
+    try {
+      const quadraToUpdate = quadras.find((q) => q.id === quadraId);
+      if (!quadraToUpdate) return;
 
-  const adicionarLote = (quadraId) => {
-    setQuadras((prev) =>
-      prev.map((q) => {
-        if (q.id === quadraId) {
-          const novoNumero =
-            q.lotes.length > 0
-              ? Math.max(...q.lotes.map((l) => l.numero)) + 1
-              : 1;
-          return {
-            ...q,
-            lotes: [...q.lotes, { numero: novoNumero, status: "vazio" }],
-          };
+      const res = await fetch(
+        `${API_BASE_URL}/${quadraId}/lotes/${loteNumero}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: novoStatus }),
         }
-        return q;
-      })
-    );
-  };
+      );
 
-  const deletarLote = (quadraId, loteNumero) => {
-    setQuadras((prev) =>
-      prev.map((q) =>
-        q.id === quadraId
-          ? {
-              ...q,
-              lotes: q.lotes.filter((l) => l.numero !== loteNumero),
-            }
-          : q
-      )
-    );
-  };
+      if (!res.ok) {
+        throw new Error(`Erro ao atualizar status: ${res.status}`);
+      }
 
-  const adicionarQuadra = () => {
-    const nome = prompt("Digite o nome da nova quadra:");
-    if (nome) {
-      setQuadras([...quadras, { id: nome, lotes: [] }]);
+      const updatedQuadraData = await res.json();
+      setQuadras((prev) =>
+        prev.map((q) =>
+          q.id === updatedQuadraData._id
+            ? { ...updatedQuadraData, id: updatedQuadraData._id }
+            : q
+        )
+      );
+    } catch (err) {
+      console.error("Erro ao atualizar status do lote:", err);
     }
   };
 
-  const deletarQuadra = (quadraId) => {
-    setQuadras((prev) => prev.filter((q) => q.id !== quadraId));
-    if (quadraSelecionada?.id === quadraId) setQuadraSelecionada(null);
+  const adicionarLote = async (quadraId) => {
+    try {
+      const quadraToUpdate = quadras.find((q) => q.id === quadraId);
+      if (!quadraToUpdate) return;
+
+      const novoNumero =
+        quadraToUpdate.lotes.length > 0
+          ? Math.max(...quadraToUpdate.lotes.map((l) => l.numero)) + 1
+          : 1;
+
+      const newLoteData = { numero: novoNumero, status: "vazio" };
+
+      const res = await fetch(`${API_BASE_URL}/${quadraId}/lotes`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newLoteData),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Erro ao adicionar lote: ${res.status}`);
+      }
+
+      const updatedQuadraData = await res.json();
+      setQuadras((prev) =>
+        prev.map((q) =>
+          q.id === updatedQuadraData._id
+            ? { ...updatedQuadraData, id: updatedQuadraData._id }
+            : q
+        )
+      );
+    } catch (err) {
+      console.error("Erro ao adicionar lote:", err);
+    }
+  };
+
+  const deletarLote = async (quadraId, loteNumero) => {
+    try {
+      const quadraToUpdate = quadras.find((q) => q.id === quadraId);
+      if (!quadraToUpdate) return;
+
+      const newLotesArray = quadraToUpdate.lotes.filter(
+        (l) => l.numero !== loteNumero
+      );
+      const updatedDataForBackend = {
+        _id: quadraToUpdate.id,
+        lotes: newLotesArray,
+      };
+
+      const res = await fetch(API_BASE_URL, {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedDataForBackend),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Erro ao deletar lote: ${res.status}`);
+      }
+
+      const returnedQuadraData = await res.json();
+      setQuadras((prev) =>
+        prev.map((q) =>
+          q.id === returnedQuadraData._id
+            ? { ...returnedQuadraData, id: returnedQuadraData._id }
+            : q
+        )
+      );
+    } catch (err) {
+      console.error("Erro ao deletar lote:", err);
+    }
+  };
+
+  const adicionarQuadra = async () => {
+    const nome = prompt("Digite o ID (ex: q1, q2) da nova quadra:");
+    if (!nome) return;
+
+    const newQuadraDataForBackend = { _id: nome, lotes: [] };
+
+    try {
+      const res = await fetch(API_BASE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newQuadraDataForBackend),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Erro ao adicionar quadra: ${res.status}`);
+      }
+
+      const addedQuadraData = await res.json();
+      setQuadras((prev) => [
+        ...prev,
+        { ...addedQuadraData, id: addedQuadraData._id },
+      ]);
+    } catch (err) {
+      console.error("Erro ao adicionar quadra:", err);
+    }
+  };
+
+  const deletarQuadra = async (quadraId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/${quadraId}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        throw new Error(`Erro ao deletar quadra: ${res.status}`);
+      }
+
+      setQuadras((prev) => prev.filter((q) => q.id !== quadraId));
+      if (quadraSelecionada?.id === quadraId) setQuadraSelecionada(null);
+    } catch (err) {
+      console.error("Erro ao deletar quadra:", err);
+    }
   };
 
   const interligarLotes = (quadraId, lote1, lote2) => {
