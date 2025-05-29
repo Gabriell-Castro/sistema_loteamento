@@ -13,7 +13,7 @@ export default function App() {
   const [lotesInterligados, setLotesInterligados] = useState([]);
   const detalhesRef = useRef(null);
 
-  const API_BASE_URL = "https://api-loteamento.vercel.app/loteamentos";
+  const API_BASE_URL = "https://api-loteamento.vercel.app/loteamentos"; // Sua URL do backend no Vercel
 
   const carregarQuadras = useCallback(async () => {
     try {
@@ -124,6 +124,7 @@ export default function App() {
       };
 
       const res = await fetch(API_BASE_URL, {
+        method: "POST", // <--- CORREÇÃO AQUI: Adicionado o método POST
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updatedDataForBackend),
       });
