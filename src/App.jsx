@@ -11,9 +11,12 @@ export default function App() {
   const [quadras, setQuadras] = useState([]);
   const [quadraSelecionada, setQuadraSelecionada] = useState(null);
   const [lotesInterligados, setLotesInterligados] = useState([]);
+  const [loteDetalhesVisivel, setLoteDetalhesVisivel] = useState(null);
+
+  const [proprietarioEmEdicao, setProprietarioEmEdicao] = useState(null);
   const detalhesRef = useRef(null);
 
-  const API_BASE_URL = "https://api-loteamento.vercel.app/loteamentos"; // Sua URL do backend no Vercel
+  const API_BASE_URL = "https://api-loteamento.vercel.app/loteamentos";
 
   const carregarQuadras = useCallback(async () => {
     try {
@@ -85,7 +88,17 @@ export default function App() {
           ? Math.max(...quadraToUpdate.lotes.map((l) => l.numero)) + 1
           : 1;
 
-      const newLoteData = { numero: novoNumero, status: "vazio" };
+      const newLoteData = {
+        numero: novoNumero,
+        status: "vazio",
+        proprietario: {
+          nome: "",
+          cpf: "",
+          telefone: "",
+          email: "",
+          observacoes: "",
+        },
+      };
 
       const res = await fetch(`${API_BASE_URL}/${quadraId}/lotes`, {
         method: "PUT",
@@ -124,7 +137,7 @@ export default function App() {
       };
 
       const res = await fetch(API_BASE_URL, {
-        method: "POST", // <--- CORREÇÃO AQUI: Adicionado o método POST
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updatedDataForBackend),
       });
@@ -141,6 +154,11 @@ export default function App() {
             : q
         )
       );
+
+      if (loteDetalhesVisivel === loteNumero) {
+        setLoteDetalhesVisivel(null);
+        setProprietarioEmEdicao(null);
+      }
     } catch (err) {
       console.error("Erro ao deletar lote:", err);
     }
@@ -185,6 +203,8 @@ export default function App() {
 
       setQuadras((prev) => prev.filter((q) => q.id !== quadraId));
       if (quadraSelecionada?.id === quadraId) setQuadraSelecionada(null);
+      setLoteDetalhesVisivel(null);
+      setProprietarioEmEdicao(null);
     } catch (err) {
       console.error("Erro ao deletar quadra:", err);
     }
@@ -206,31 +226,73 @@ export default function App() {
     );
   };
 
-  const desenharLinhas = () => {
-    return lotesInterligados.map(({ quadraId, lote1, lote2 }, index) => {
-      const quadra = quadras.find((q) => q.id === quadraId);
-      if (!quadra) return null;
-
-      const idx1 = quadra.lotes.findIndex((l) => l.numero === lote1);
-      const idx2 = quadra.lotes.findIndex((l) => l.numero === lote2);
-      if (idx1 === -1 || idx2 === -1) return null;
-
-      const pos1 = 20 + idx1 * 30;
-      const pos2 = 20 + idx2 * 30;
-      const top = quadras.findIndex((q) => q.id === quadraId) * 100 + 100;
-
-      return (
-        <line
-          key={index}
-          x1={pos1}
-          y1={top}
-          x2={pos2}
-          y2={top}
-          stroke="black"
-          strokeWidth="2"
-        />
+  const salvarDadosProprietario = async (
+    quadraId,
+    loteNumero,
+    dadosProprietario
+  ) => {
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/${quadraId}/lotes/${loteNumero}/proprietario`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(dadosProprietario),
+        }
       );
-    });
+
+      if (!res.ok) {
+        throw new Error(
+          `Erro ao atualizar dados do proprietário: ${res.status}`
+        );
+      }
+
+      const updatedQuadraData = await res.json();
+      setQuadras((prev) =>
+        prev.map((q) =>
+          q.id === updatedQuadraData._id
+            ? { ...updatedQuadraData, id: updatedQuadraData._id }
+            : q
+        )
+      );
+
+      setProprietarioEmEdicao(null);
+    } catch (err) {
+      console.error("Erro ao salvar dados do proprietário:", err);
+    }
+  };
+
+  const handleProprietarioInputChange = (e, campo) => {
+    setProprietarioEmEdicao((prev) => ({
+      ...(prev || {}),
+      [campo]: e.target.value,
+    }));
+  };
+
+  const toggleDetalhesProprietario = async (lote) => {
+    if (loteDetalhesVisivel === lote.numero) {
+      if (proprietarioEmEdicao) {
+        await salvarDadosProprietario(
+          quadraSelecionada.id,
+          lote.numero,
+          proprietarioEmEdicao
+        );
+      }
+      setLoteDetalhesVisivel(null);
+      setProprietarioEmEdicao(null);
+    } else {
+      setLoteDetalhesVisivel(lote.numero);
+
+      setProprietarioEmEdicao(
+        lote.proprietario || {
+          nome: "",
+          cpf: "",
+          telefone: "",
+          email: "",
+          observacoes: "",
+        }
+      );
+    }
   };
 
   return (
@@ -242,10 +304,10 @@ export default function App() {
         <p>Vendidos: {vendidos}</p>
         <p>Vazios: {vazios}</p>
         <p>Pendentes: {pendentes}</p>
-        <button onClick={adicionarQuadra}>Adicionar Quadra</button>
+        <button className="btn btn-primary" onClick={adicionarQuadra}>
+          Adicionar Quadra
+        </button>
       </div>
-
-      <svg className="linhas-svg">{desenharLinhas()}</svg>
 
       <div className="quadras-container">
         {quadras.map((quadra) => (
@@ -261,7 +323,7 @@ export default function App() {
                   e.stopPropagation();
                   deletarQuadra(quadra.id);
                 }}
-                className="btn-delete"
+                className="btn btn-delete"
               >
                 Excluir Quadra
               </button>
@@ -269,7 +331,7 @@ export default function App() {
             <div className="lotes-status">
               {quadra.lotes.map((lote) => (
                 <div
-                  key={lote.numero}
+                  key={`${quadra.id}-${lote.numero}`}
                   className={`status-indicator ${statusColor[lote.status]} ${
                     verificarInterligacao(quadra.id, lote.numero)
                       ? "interligado"
@@ -291,51 +353,111 @@ export default function App() {
           <ul className="lista-lotes">
             {quadras
               .find((q) => q.id === quadraSelecionada.id)
-              .lotes.map((lote) => (
-                <li key={lote.numero} className="item-lote">
-                  Lote {lote.numero} -
-                  <select
-                    value={lote.status}
-                    onChange={(e) =>
-                      atualizarStatus(
-                        quadraSelecionada.id,
-                        lote.numero,
-                        e.target.value
-                      )
-                    }
+              .lotes.map((lote) => {
+                const isDetalhesOpen = loteDetalhesVisivel === lote.numero;
+                const currentProprietarioData = isDetalhesOpen
+                  ? proprietarioEmEdicao || lote.proprietario || {}
+                  : lote.proprietario || {};
+
+                return (
+                  <li
+                    key={`${quadraSelecionada.id}-${lote.numero}`}
+                    className="item-lote"
                   >
-                    <option value="vendido">Vendido</option>
-                    <option value="vazio">Vazio</option>
-                    <option value="pendente">Pendente</option>
-                  </select>
-                  <button
-                    onClick={() =>
-                      deletarLote(quadraSelecionada.id, lote.numero)
-                    }
-                    className="btn-delete"
-                  >
-                    Excluir
-                  </button>
-                  <button
-                    onClick={() => {
-                      const outro = prompt(
-                        `Interligar Lote ${lote.numero} com qual número?`
-                      );
-                      if (outro)
-                        interligarLotes(
+                    Lote {lote.numero}
+                    <select
+                      className={`status-select ${statusColor[lote.status]}`}
+                      value={lote.status}
+                      onChange={(e) =>
+                        atualizarStatus(
                           quadraSelecionada.id,
                           lote.numero,
-                          outro
-                        );
-                    }}
-                    className="btn-interligar"
-                  >
-                    Interligar
-                  </button>
-                </li>
-              ))}
+                          e.target.value
+                        )
+                      }
+                    >
+                      <option value="vendido">Vendido</option>
+                      <option value="vazio">Vazio</option>
+                      <option value="pendente">Pendente</option>
+                    </select>
+                    <div className="lote-actions">
+                      <button
+                        onClick={() => toggleDetalhesProprietario(lote)}
+                        className="btn btn-details"
+                      >
+                        {isDetalhesOpen ? "Salvar" : "Ver Detalhes"}
+                      </button>
+                      <button
+                        onClick={() =>
+                          deletarLote(quadraSelecionada.id, lote.numero)
+                        }
+                        className="btn btn-delete"
+                      >
+                        Excluir
+                      </button>
+                    </div>
+                    {isDetalhesOpen && (
+                      <div className={`detalhes-proprietario show`}>
+                        <h3>Dados do Proprietário:</h3>
+                        <div className="input-group">
+                          <label>Nome:</label>
+                          <input
+                            type="text"
+                            value={currentProprietarioData.nome || ""}
+                            onChange={(e) =>
+                              handleProprietarioInputChange(e, "nome")
+                            }
+                          />
+                        </div>
+                        <div className="input-group">
+                          <label>CPF:</label>
+                          <input
+                            type="text"
+                            value={currentProprietarioData.cpf || ""}
+                            onChange={(e) =>
+                              handleProprietarioInputChange(e, "cpf")
+                            }
+                          />
+                        </div>
+                        <div className="input-group">
+                          <label>Telefone:</label>
+                          <input
+                            type="text"
+                            value={currentProprietarioData.telefone || ""}
+                            onChange={(e) =>
+                              handleProprietarioInputChange(e, "telefone")
+                            }
+                          />
+                        </div>
+                        <div className="input-group">
+                          <label>Email:</label>
+                          <input
+                            type="email"
+                            value={currentProprietarioData.email || ""}
+                            onChange={(e) =>
+                              handleProprietarioInputChange(e, "email")
+                            }
+                          />
+                        </div>
+                        <div className="input-group">
+                          <label>Observações:</label>
+                          <textarea
+                            value={currentProprietarioData.observacoes || ""}
+                            onChange={(e) =>
+                              handleProprietarioInputChange(e, "observacoes")
+                            }
+                          ></textarea>
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
           </ul>
-          <button onClick={() => adicionarLote(quadraSelecionada.id)}>
+          <button
+            className="btn btn-primary"
+            onClick={() => adicionarLote(quadraSelecionada.id)}
+          >
             Adicionar Lote
           </button>
         </div>
