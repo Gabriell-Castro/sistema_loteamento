@@ -297,7 +297,7 @@ export default function App() {
 
   return (
     <div className="container">
-      <h1 className="title">MAPA GUILHERME AMORIM</h1>
+      <h1 className="title">Organização e contagem de quadras e lotes</h1>
 
       <div className="resumo">
         <p>Total de Lotes: {totalLotes}</p>
